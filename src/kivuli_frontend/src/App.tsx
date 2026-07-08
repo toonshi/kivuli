@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Car, Loader2, MapPin, ShieldCheck, Zap } from "lucide-react";
+import { Car } from "lucide-react";
 import {
   Map,
   MapMarker,
   MarkerContent,
   MarkerLabel,
   MapRoute,
-  MapControls,
 } from "@/components/map";
 import { brand } from "@/lib/brand";
 import { estimateFare, type Coord, type Fare } from "@/lib/fare";
@@ -23,10 +22,11 @@ const DESTINATIONS: Destination[] = [
   { name: "JKIA", coord: { lat: -1.3192, lng: 36.9278 } },
 ];
 
+const GILT = "#c6a353";
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export default function App() {
-  const [pickup, setPickup] = useState<Coord>(brand.defaultCenter);
+  const [pickup] = useState<Coord>(brand.defaultCenter);
   const [destName, setDestName] = useState<string | null>(null);
   const [dropoff, setDropoff] = useState<Coord | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -46,7 +46,6 @@ export default function App() {
     [pickup, dropoff],
   );
 
-  // Poll on-chain ride state while a ride is live — proves it's really on-chain.
   useEffect(() => {
     if (!rideId || phase === "idle") return;
     let active = true;
@@ -97,8 +96,6 @@ export default function App() {
     try {
       const id = await canister.requestRide(pickup, dropoff, fare.sats);
       setRideId(id);
-
-      // A nearby driver accepts.
       const driverStart: Coord = {
         lat: pickup.lat + 0.014,
         lng: pickup.lng - 0.016,
@@ -111,14 +108,10 @@ export default function App() {
       );
       setDriver(driverStart);
       setPhase("enroute");
-
-      // Drive to the rider.
       await animateSegment(driverStart, pickup, 6500, setDriver);
       if (cancelledRef.current) return;
       await canister.updateDriver(id, pickup.lat, pickup.lng, "intrip");
       setPhase("intrip");
-
-      // Drive the rider to the destination.
       await animateSegment(pickup, dropoff, 9000, setDriver);
       if (cancelledRef.current) return;
       await canister.completeRide(id);
@@ -160,12 +153,12 @@ export default function App() {
   };
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-background">
+    <div className="grain relative h-screen w-screen overflow-hidden bg-background">
       <Map
         theme="dark"
         center={brand.mapCenter}
         zoom={brand.mapZoom}
-        className="absolute inset-0"
+        className="absolute inset-0 [filter:brightness(0.9)_contrast(1.06)_saturate(0.68)]"
       >
         {dropoff && (
           <>
@@ -175,9 +168,9 @@ export default function App() {
                 [pickup.lng, pickup.lat],
                 [dropoff.lng, dropoff.lat],
               ]}
-              color="#e6b450"
-              width={11}
-              opacity={0.14}
+              color={GILT}
+              width={10}
+              opacity={0.12}
             />
             <MapRoute
               id="trip-line"
@@ -185,31 +178,30 @@ export default function App() {
                 [pickup.lng, pickup.lat],
                 [dropoff.lng, dropoff.lat],
               ]}
-              color="#f0c463"
-              width={2.5}
-              opacity={0.95}
+              color={GILT}
+              width={1.5}
+              opacity={0.9}
             />
           </>
         )}
 
         <MapMarker longitude={pickup.lng} latitude={pickup.lat}>
           <MarkerContent>
-            <div className="relative flex size-3 items-center justify-center">
-              <span className="kv-ping absolute inset-0 rounded-full bg-emerald-400" />
-              <span className="relative size-3 rounded-full bg-emerald-400 ring-4 ring-emerald-400/20" />
+            <div className="relative flex size-2.5 items-center justify-center">
+              <span className="absolute inset-0 rounded-full border border-bone/40" />
+              <span className="size-1.5 rounded-full bg-bone" />
             </div>
-            <MarkerLabel className="text-emerald-300">Pickup</MarkerLabel>
+            <MarkerLabel className="font-mono text-[9px] tracking-[0.2em] text-bone/70">
+              PICKUP
+            </MarkerLabel>
           </MarkerContent>
         </MapMarker>
 
         {dropoff && (
           <MapMarker longitude={dropoff.lng} latitude={dropoff.lat}>
             <MarkerContent>
-              <MapPin
-                className="size-6 fill-[var(--brand)] text-black"
-                strokeWidth={1.5}
-              />
-              <MarkerLabel className="text-[var(--brand)]">
+              <span className="block size-2.5 rotate-45 border border-gilt bg-gilt/30" />
+              <MarkerLabel className="font-mono text-[9px] tracking-[0.2em] text-gilt uppercase">
                 {destName}
               </MarkerLabel>
             </MarkerContent>
@@ -219,59 +211,64 @@ export default function App() {
         {driver && (
           <MapMarker longitude={driver.lng} latitude={driver.lat}>
             <MarkerContent>
-              <div className="relative flex size-8 items-center justify-center rounded-full bg-[var(--brand)] text-black shadow-lg shadow-black/50">
-                <span className="kv-ping absolute inset-0 rounded-full bg-[var(--brand)]" />
-                <Car className="relative size-4" />
+              <div className="relative flex size-7 items-center justify-center rounded-full bg-[#0a0a0b] text-gilt shadow-lg shadow-black/60 ring-1 ring-gilt/50">
+                <span className="kv-breathe absolute -inset-1 rounded-full ring-1 ring-gilt/40" />
+                <Car className="relative size-3.5" />
               </div>
             </MarkerContent>
           </MapMarker>
         )}
-
-        <MapControls
-          showLocate
-          onLocate={(c) =>
-            phase === "idle" && setPickup({ lat: c.latitude, lng: c.longitude })
-          }
-        />
       </Map>
 
+      {/* Depth grade */}
       <div
-        className="pointer-events-none absolute inset-0 z-[5]"
+        className="pointer-events-none absolute inset-0 z-10"
         style={{
           background:
-            "radial-gradient(120% 90% at 50% 18%, transparent 52%, rgba(0,0,0,0.62) 100%)",
+            "radial-gradient(130% 100% at 50% 12%, transparent 45%, rgba(0,0,0,0.5) 76%, rgba(0,0,0,0.86) 100%)",
         }}
       />
 
-      <div className="pointer-events-none absolute top-5 left-5 z-10 flex select-none items-center gap-3">
+      {/* Wordmark */}
+      <div className="pointer-events-none absolute top-6 left-7 z-20 flex select-none items-center gap-3">
         <EclipseMark />
-        <div>
-          <div className="kv-wordmark text-2xl leading-none font-semibold tracking-[0.28em] text-foreground [text-shadow:0_0_22px_rgba(230,180,80,0.28)]">
-            {brand.name.toUpperCase()}
+        <div className="leading-none">
+          <div className="font-display text-[27px] font-semibold tracking-[0.02em] text-bone">
+            Kivuli
           </div>
-          <div className="mt-1 text-[10px] tracking-[0.22em] text-muted-foreground">
-            {brand.tagline.toUpperCase()}
+          <div className="mt-1.5 font-mono text-[9px] tracking-[0.32em] text-mist uppercase">
+            {brand.tagline}
           </div>
         </div>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-10 p-4 sm:inset-x-auto sm:bottom-6 sm:left-6 sm:w-[360px] sm:p-0">
-        <div className="kv-up rounded-2xl border border-border bg-popover/80 p-4 shadow-2xl shadow-black/60 ring-1 ring-white/5 backdrop-blur-xl">
-          <Panel
-            phase={phase}
-            destName={destName}
-            dropoff={dropoff}
-            fare={fare}
-            seq={seq}
-            chainStatus={chainStatus}
-            paid={paid}
-            paying={paying}
-            payBlock={payBlock}
-            onSelect={selectDestination}
-            onRequest={() => void handleRequest()}
-            onPay={() => void handlePay()}
-            onReset={handleReset}
-          />
+      {/* The black card */}
+      <div className="absolute inset-x-0 bottom-0 z-20 p-4 sm:inset-x-auto sm:bottom-7 sm:left-7 sm:w-[384px] sm:p-0">
+        <div
+          className="kv-up relative overflow-hidden rounded-[22px] border border-white/8 bg-[#111113]/85 backdrop-blur-2xl"
+          style={{
+            boxShadow:
+              "0 40px 90px -24px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.05)",
+          }}
+        >
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gilt/60 to-transparent" />
+          <div className="p-5">
+            <Panel
+              phase={phase}
+              destName={destName}
+              dropoff={dropoff}
+              fare={fare}
+              seq={seq}
+              chainStatus={chainStatus}
+              paid={paid}
+              paying={paying}
+              payBlock={payBlock}
+              onSelect={selectDestination}
+              onRequest={() => void handleRequest()}
+              onPay={() => void handlePay()}
+              onReset={handleReset}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -311,104 +308,101 @@ function Panel({
 }: PanelProps) {
   if (phase === "idle") {
     return (
-      <div className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">Where to?</div>
-          <div className="text-xs text-muted-foreground">
-            Pickup: Westlands · settle in Bitcoin
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <div className="space-y-5">
+        <Header eyebrow="Destination" title="Where to?" trailing="Westlands" />
+        <div className="flex flex-wrap gap-x-5 gap-y-2.5">
           {DESTINATIONS.map((d) => (
             <button
               key={d.name}
               onClick={() => onSelect(d)}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-sm transition",
+                "font-display relative pb-1 text-lg transition-colors",
                 destName === d.name
-                  ? "border-[var(--brand)] bg-[color:var(--brand)]/15 text-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground",
+                  ? "text-bone"
+                  : "text-mist hover:text-bone",
               )}
             >
               {d.name}
+              {destName === d.name && (
+                <span className="absolute inset-x-0 -bottom-px h-px bg-gilt" />
+              )}
             </button>
           ))}
         </div>
-        {fare && <FareRow fare={fare} />}
-        <button
-          disabled={!dropoff}
-          onClick={onRequest}
-          className="w-full rounded-xl bg-[var(--brand)] px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-40"
-        >
-          {dropoff ? `Request ride to ${destName}` : "Choose a destination"}
-        </button>
+        {fare && <FareBlock fare={fare} />}
+        {dropoff ? (
+          <BoneButton onClick={onRequest}>Request ride</BoneButton>
+        ) : (
+          <div className="rounded-xl border border-white/10 px-4 py-3.5 text-center font-mono text-[11px] tracking-[0.2em] text-mist uppercase">
+            Choose a destination
+          </div>
+        )}
       </div>
     );
   }
 
   if (phase === "requesting") {
     return (
-      <Status
-        icon={<Loader2 className="size-4 animate-spin" />}
+      <Header
+        eyebrow="On-chain"
         title="Summoning a driver"
-        sub="Broadcasting your request on-chain…"
+        trailing="…"
+        breathe
       />
     );
   }
 
   if (phase === "enroute" || phase === "intrip") {
-    const isTrip = phase === "intrip";
+    const trip = phase === "intrip";
     return (
-      <div className="space-y-3">
-        <Status
-          icon={isTrip ? <Zap className="size-4" /> : <Car className="size-4" />}
-          title={
-            isTrip ? `En route to ${destName}` : `${brand.driverId} is approaching`
-          }
-          sub={isTrip ? "Enjoy the ride" : "Your driver is on the way"}
+      <div className="space-y-4">
+        <Header
+          eyebrow={trip ? "In transit" : "Driver en route"}
+          title={trip ? `To ${destName}` : "Arriving now"}
+          trailingNode={<DriverChip />}
         />
-        <OnChainBadge seq={seq} status={chainStatus} />
-        {fare && <FareRow fare={fare} />}
+        <OnChainRow seq={seq} status={chainStatus} />
+        {fare && <FareBlock fare={fare} />}
       </div>
     );
   }
 
   // completed
   return (
-    <div className="space-y-3">
-      <Status
-        icon={<ShieldCheck className="size-4 text-emerald-400" />}
-        title="You've arrived"
-        sub={`Trip to ${destName} complete`}
-      />
-      <OnChainBadge seq={seq} status={chainStatus} />
+    <div className="space-y-4">
+      <Header eyebrow="Arrived" title={destName ?? "Trip complete"} />
       {!paid ? (
-        <button
-          onClick={onPay}
-          disabled={paying}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
-        >
-          {paying ? (
-            <>
-              <Loader2 className="size-4 animate-spin" /> Settling on-chain…
-            </>
-          ) : (
-            <>Pay ₿ {fare?.sats.toLocaleString()} sats · ckBTC</>
-          )}
-        </button>
+        <>
+          {fare && <FareBlock fare={fare} />}
+          <GiltButton onClick={onPay} loading={paying}>
+            {paying
+              ? "Settling on-chain…"
+              : `Pay ${fare?.sats.toLocaleString()} sats · ckBTC`}
+          </GiltButton>
+        </>
       ) : (
-        <div className="space-y-2">
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-center text-sm font-medium text-emerald-300">
-            Paid {fare?.sats.toLocaleString()} sats · ckBTC ✓
-            {payBlock != null && (
-              <div className="mt-0.5 font-mono text-[11px] text-emerald-400/80">
-                ledger block #{payBlock.toString()}
-              </div>
-            )}
+        <div className="space-y-3">
+          <div className="relative rounded-2xl border border-gilt/25 bg-gilt/[0.06] px-4 py-5 text-center">
+            <div className="kv-stamp mx-auto mb-2 flex size-9 items-center justify-center rounded-full border border-gilt/50 text-gilt">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M5 12.5l4.5 4.5L19 7.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <div className="font-display text-xl text-bone">Paid in ckBTC</div>
+            <div className="mt-1 font-mono text-[10px] tracking-[0.18em] text-mist uppercase">
+              {fare?.sats.toLocaleString()} sats
+              {payBlock != null ? ` · block #${payBlock.toString()}` : ""}
+            </div>
           </div>
           <button
             onClick={onReset}
-            className="w-full rounded-xl border border-border px-4 py-2.5 text-sm text-muted-foreground transition hover:text-foreground"
+            className="w-full py-1 text-center font-mono text-[10px] tracking-[0.3em] text-mist uppercase transition-colors hover:text-bone"
           >
             New ride
           </button>
@@ -418,43 +412,68 @@ function Panel({
   );
 }
 
-function FareRow({ fare }: { fare: Fare }) {
-  return (
-    <div className="flex items-center justify-between rounded-xl border border-border bg-background/40 px-3 py-2 text-sm">
-      <span className="text-muted-foreground">{fare.km.toFixed(1)} km</span>
-      <span className="font-medium text-foreground">
-        ≈ KES {fare.kes.toLocaleString()}
-      </span>
-      <span className="font-mono text-[var(--brand)]">
-        ₿ {fare.sats.toLocaleString()}
-      </span>
-    </div>
-  );
-}
-
-function Status({
-  icon,
+function Header({
+  eyebrow,
   title,
-  sub,
+  trailing,
+  trailingNode,
+  breathe,
 }: {
-  icon: React.ReactNode;
+  eyebrow: string;
   title: string;
-  sub: string;
+  trailing?: string;
+  trailingNode?: React.ReactNode;
+  breathe?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex size-9 items-center justify-center rounded-full bg-muted text-foreground">
-        {icon}
-      </div>
+    <div className="flex items-start justify-between">
       <div>
-        <div className="text-sm font-medium text-foreground">{title}</div>
-        <div className="text-xs text-muted-foreground">{sub}</div>
+        <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.3em] text-mist uppercase">
+          {breathe && (
+            <span className="kv-breathe size-1.5 rounded-full bg-gilt" />
+          )}
+          {eyebrow}
+        </div>
+        <div className="font-display mt-1 text-[26px] leading-none text-bone">
+          {title}
+        </div>
+      </div>
+      {trailingNode ??
+        (trailing && (
+          <div className="font-mono text-[10px] tracking-[0.2em] text-mist uppercase">
+            {trailing}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function FareBlock({ fare }: { fare: Fare }) {
+  return (
+    <div className="flex items-end justify-between border-t border-white/8 pt-4">
+      <div>
+        <div className="font-mono text-[10px] tracking-[0.3em] text-mist uppercase">
+          Fare · {fare.km.toFixed(1)} km
+        </div>
+        <div className="font-display mt-1 text-[34px] leading-none text-bone">
+          <span className="mr-1 align-top text-base text-mist">KES</span>
+          {fare.kes.toLocaleString()}
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="font-mono text-[10px] tracking-[0.3em] text-mist uppercase">
+          ckBTC
+        </div>
+        <div className="mt-1 font-mono text-lg text-gilt">
+          {fare.sats.toLocaleString()}
+          <span className="ml-1 text-xs text-mist">sats</span>
+        </div>
       </div>
     </div>
   );
 }
 
-function OnChainBadge({
+function OnChainRow({
   seq,
   status,
 }: {
@@ -462,16 +481,64 @@ function OnChainBadge({
   status: string | null;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-border bg-background/40 px-3 py-1.5 text-[11px]">
-      <span className="flex items-center gap-1.5 text-muted-foreground">
-        <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
-        on-chain · ICP
+    <div className="flex items-center justify-between border-t border-white/8 pt-3 font-mono text-[10px] tracking-[0.2em] uppercase">
+      <span className="flex items-center gap-2 text-mist">
+        <span className="kv-breathe size-1.5 rounded-full bg-gilt" />
+        On-chain · ICP
       </span>
-      <span className="font-mono text-muted-foreground">
-        {seq != null ? `ride #${seq.toString()}` : "…"}
+      <span className="text-mist">
+        {seq != null ? `ride ${seq.toString()}` : "…"}
         {status ? ` · ${status}` : ""}
       </span>
     </div>
+  );
+}
+
+function DriverChip() {
+  return (
+    <div className="flex items-center gap-2 rounded-full border border-white/10 px-2.5 py-1">
+      <Car className="size-3 text-gilt" />
+      <span className="font-mono text-[10px] tracking-[0.15em] text-bone/80">
+        {brand.driverId}
+      </span>
+    </div>
+  );
+}
+
+function BoneButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full rounded-xl bg-bone px-4 py-3.5 text-sm font-medium text-[#0a0a0b] transition hover:bg-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+function GiltButton({
+  onClick,
+  loading,
+  children,
+}: {
+  onClick: () => void;
+  loading?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="w-full rounded-xl bg-gradient-to-b from-[#d8b565] to-[#b48d3a] px-4 py-3.5 text-sm font-medium text-[#0a0a0b] shadow-[0_10px_28px_-10px_rgba(198,163,83,0.55),inset_0_1px_0_rgba(255,255,255,0.35)] transition hover:brightness-105 disabled:opacity-70"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -482,7 +549,7 @@ function EclipseMark() {
       height="30"
       viewBox="0 0 28 28"
       aria-hidden
-      style={{ filter: "drop-shadow(0 0 8px rgba(230,180,80,0.4))" }}
+      style={{ filter: "drop-shadow(0 0 9px rgba(198,163,83,0.45))" }}
     >
       <defs>
         <mask id="kv-eclipse">
@@ -494,7 +561,7 @@ function EclipseMark() {
         cx="14"
         cy="14"
         r="12"
-        fill="var(--brand)"
+        fill="var(--gilt)"
         mask="url(#kv-eclipse)"
       />
     </svg>
