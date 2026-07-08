@@ -1,0 +1,29 @@
+{
+  "canisters": {
+    "kivuli_backend": {
+      "build": "npx azle kivuli_backend",
+      "candid": "src/kivuli_backend/kivuli_backend.did",
+      "gzip": true,
+      "main": "src/kivuli_backend/src/index.ts",
+      "tech_stack": {
+        "cdk": {
+          "azle": {}
+        },
+        "language": {
+          "javascript": {},
+          "typescript": {}
+        }
+      },
+      "type": "custom",
+      "wasm": ".azle/kivuli_backend/kivuli_backend.wasm"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
