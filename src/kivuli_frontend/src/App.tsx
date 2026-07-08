@@ -10,7 +10,7 @@ import {
 import { brand } from "@/lib/brand";
 import { estimateFare, type Coord, type Fare } from "@/lib/fare";
 import * as canister from "@/lib/canister";
-import { fetchRoute, pointAlong, type LngLat } from "@/lib/route";
+import { fetchRoute, pointAlong, type LngLat, type Route } from "@/lib/route";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "requesting" | "enroute" | "intrip" | "completed";
@@ -24,6 +24,9 @@ const DESTINATIONS: Destination[] = [
 ];
 
 const GILT = "#c6a353";
+const toMin = (sec: number) => Math.max(1, Math.round(sec / 60));
+const clock = (d: Date) =>
+  d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 export default function App() {
   const [pickup] = useState<Coord>(brand.defaultCenter);
@@ -37,7 +40,9 @@ export default function App() {
   const [paid, setPaid] = useState(false);
   const [paying, setPaying] = useState(false);
   const [payBlock, setPayBlock] = useState<bigint | null>(null);
-  const [tripRoute, setTripRoute] = useState<LngLat[] | null>(null);
+  const [tripRoute, setTripRoute] = useState<Route | null>(null);
+  const [pickupEtaMin, setPickupEtaMin] = useState<number | null>(null);
+  const [arriveClock, setArriveClock] = useState<string | null>(null);
 
   const rafRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
@@ -48,11 +53,13 @@ export default function App() {
   );
 
   const tripCoords: LngLat[] | null = dropoff
-    ? (tripRoute ?? [
+    ? (tripRoute?.coords ?? [
         [pickup.lng, pickup.lat],
         [dropoff.lng, dropoff.lat],
       ])
     : null;
+
+  const tripMin = tripRoute ? toMin(tripRoute.durationSec) : null;
 
   useEffect(() => {
     if (!rideId || phase === "idle") return;
@@ -118,13 +125,24 @@ export default function App() {
       // Road-follow the driver: approach route to the rider, then the trip route.
       const approach = await fetchRoute(driverStart, pickup);
       const trip = tripRoute ?? (await fetchRoute(pickup, dropoff));
-      setDriver({ lng: approach[0][0], lat: approach[0][1] });
+
+      // Real ETAs from OSRM: pickup time, plus an estimated arrival clock.
+      setPickupEtaMin(toMin(approach.durationSec));
+      setArriveClock(
+        clock(
+          new Date(
+            Date.now() + (approach.durationSec + trip.durationSec) * 1000,
+          ),
+        ),
+      );
+
+      setDriver({ lng: approach.coords[0][0], lat: approach.coords[0][1] });
       setPhase("enroute");
-      await animatePath(approach, 6500, setDriver);
+      await animatePath(approach.coords, 6500, setDriver);
       if (cancelledRef.current) return;
       await canister.updateDriver(id, pickup.lat, pickup.lng, "intrip");
       setPhase("intrip");
-      await animatePath(trip, 9000, setDriver);
+      await animatePath(trip.coords, 9000, setDriver);
       if (cancelledRef.current) return;
       await canister.completeRide(id);
       setDriver(dropoff);
@@ -163,6 +181,8 @@ export default function App() {
     setPaying(false);
     setPayBlock(null);
     setTripRoute(null);
+    setPickupEtaMin(null);
+    setArriveClock(null);
   };
 
   return (
@@ -265,6 +285,9 @@ export default function App() {
               destName={destName}
               dropoff={dropoff}
               fare={fare}
+              tripMin={tripMin}
+              pickupEtaMin={pickupEtaMin}
+              arriveClock={arriveClock}
               seq={seq}
               chainStatus={chainStatus}
               paid={paid}
@@ -287,6 +310,9 @@ type PanelProps = {
   destName: string | null;
   dropoff: Coord | null;
   fare: Fare | null;
+  tripMin: number | null;
+  pickupEtaMin: number | null;
+  arriveClock: string | null;
   seq: bigint | null;
   chainStatus: string | null;
   paid: boolean;
@@ -303,6 +329,9 @@ function Panel({
   destName,
   dropoff,
   fare,
+  tripMin,
+  pickupEtaMin,
+  arriveClock,
   seq,
   chainStatus,
   paid,
@@ -336,7 +365,7 @@ function Panel({
             </button>
           ))}
         </div>
-        {fare && <FareBlock fare={fare} />}
+        {fare && <FareBlock fare={fare} minutes={tripMin} />}
         {dropoff ? (
           <BoneButton onClick={onRequest}>Request ride</BoneButton>
         ) : (
@@ -365,11 +394,27 @@ function Panel({
       <div className="space-y-4">
         <Header
           eyebrow={trip ? "In transit" : "Driver en route"}
-          title={trip ? `To ${destName}` : "Arriving now"}
+          title={
+            trip
+              ? `To ${destName}`
+              : pickupEtaMin != null
+                ? `${pickupEtaMin} min away`
+                : "Arriving now"
+          }
           trailingNode={<DriverChip />}
         />
+        <div className="flex items-center justify-between border-t border-white/8 pt-3 font-mono text-[10px] tracking-[0.2em] uppercase">
+          <span className="text-mist">{trip ? "Arriving" : "Pickup"}</span>
+          <span className="text-bone">
+            {trip
+              ? (arriveClock ?? "…")
+              : pickupEtaMin != null
+                ? `${pickupEtaMin} min`
+                : "…"}
+          </span>
+        </div>
         <OnChainRow seq={seq} status={chainStatus} />
-        {fare && <FareBlock fare={fare} />}
+        {fare && <FareBlock fare={fare} minutes={tripMin} />}
       </div>
     );
   }
@@ -380,7 +425,7 @@ function Panel({
       <Header eyebrow="Arrived" title={destName ?? "Trip complete"} />
       {!paid ? (
         <>
-          {fare && <FareBlock fare={fare} />}
+          {fare && <FareBlock fare={fare} minutes={tripMin} />}
           <GiltButton onClick={onPay} loading={paying}>
             {paying
               ? "Settling on-chain…"
@@ -455,12 +500,19 @@ function Header({
   );
 }
 
-function FareBlock({ fare }: { fare: Fare }) {
+function FareBlock({
+  fare,
+  minutes,
+}: {
+  fare: Fare;
+  minutes: number | null;
+}) {
   return (
     <div className="flex items-end justify-between border-t border-white/8 pt-4">
       <div>
         <div className="font-mono text-[10px] tracking-[0.3em] text-mist uppercase">
           Fare · {fare.km.toFixed(1)} km
+          {minutes != null ? ` · ${minutes} min` : ""}
         </div>
         <div className="font-display mt-1 text-[34px] leading-none text-bone">
           <span className="mr-1 align-top text-base text-mist">KES</span>

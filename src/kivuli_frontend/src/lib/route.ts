@@ -2,15 +2,31 @@ import { haversineKm, type Coord } from "@/lib/fare";
 
 export type LngLat = [number, number];
 
+export type Route = {
+  /** Road geometry as [lng, lat] pairs. */
+  coords: LngLat[];
+  /** Estimated driving time in seconds (OSRM), used for ETAs. */
+  durationSec: number;
+  /** Route length in km. */
+  distanceKm: number;
+};
+
 /**
- * Fetch a road-following driving route (array of [lng, lat]) between two points
- * via the public OSRM demo server. Falls back to a straight line on any failure.
+ * Fetch a road-following driving route between two points via the public OSRM
+ * demo server. Returns the geometry plus OSRM's own duration/distance so the UI
+ * can show a real ETA. Falls back to a straight line + a ~26 km/h city estimate
+ * on any failure, so the demo never breaks.
  */
-export async function fetchRoute(from: Coord, to: Coord): Promise<LngLat[]> {
-  const straight: LngLat[] = [
-    [from.lng, from.lat],
-    [to.lng, to.lat],
-  ];
+export async function fetchRoute(from: Coord, to: Coord): Promise<Route> {
+  const km = haversineKm(from, to);
+  const straight: Route = {
+    coords: [
+      [from.lng, from.lat],
+      [to.lng, to.lat],
+    ],
+    durationSec: (km / 26) * 3600,
+    distanceKm: km,
+  };
   try {
     const url =
       `https://router.project-osrm.org/route/v1/driving/` +
@@ -19,10 +35,18 @@ export async function fetchRoute(from: Coord, to: Coord): Promise<LngLat[]> {
     const res = await fetch(url);
     if (!res.ok) return straight;
     const data = await res.json();
-    const coords = data?.routes?.[0]?.geometry?.coordinates;
-    return Array.isArray(coords) && coords.length >= 2
-      ? (coords as LngLat[])
-      : straight;
+    const route = data?.routes?.[0];
+    const coords = route?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return straight;
+    return {
+      coords: coords as LngLat[],
+      durationSec:
+        typeof route.duration === "number"
+          ? route.duration
+          : straight.durationSec,
+      distanceKm:
+        typeof route.distance === "number" ? route.distance / 1000 : km,
+    };
   } catch {
     return straight;
   }
