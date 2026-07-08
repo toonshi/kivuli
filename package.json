@@ -13,6 +13,7 @@
   },
   "type": "module",
   "workspaces": [
-    "src/kivuli_backend"
+    "src/kivuli_backend",
+    "src/kivuli_ledger"
   ]
 }

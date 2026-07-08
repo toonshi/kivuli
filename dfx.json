@@ -1,27 +1,16 @@
 {
   "canisters": {
     "kivuli_backend": {
-      "build": "npx azle kivuli_backend",
-      "candid": "src/kivuli_backend/kivuli_backend.did",
-      "gzip": true,
+      "type": "azle",
       "main": "src/kivuli_backend/src/index.ts",
-      "tech_stack": {
-        "cdk": {
-          "azle": {}
-        },
-        "language": {
-          "javascript": {},
-          "typescript": {}
-        }
-      },
-      "type": "custom",
-      "wasm": ".azle/kivuli_backend/kivuli_backend.wasm"
-    }
-  },
-  "defaults": {
-    "build": {
-      "args": "",
-      "packtool": ""
+      "declarations": {
+        "output": "src/declarations/kivuli_backend",
+        "node_compatibility": true
+      }
+    },
+    "kivuli_ledger": {
+      "type": "azle",
+      "main": "src/kivuli_ledger/src/index.ts"
     }
   },
   "output_env_file": ".env",

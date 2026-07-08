@@ -1,57 +1,108 @@
-# `kivuli`
+<h1 align="center">Kivuli 🌒</h1>
 
-Welcome to your new `kivuli` project and to the Internet Computer development community. By default, creating a new project adds this README and some template files to your project directory. You can edit these template files to customize your project and to include your own code to speed up the development cycle.
+<p align="center">
+  <b>Move in the shadows.</b><br/>
+  A fully on-chain, privacy-forward ride-hailing concept — built entirely in TypeScript on the
+  <a href="https://internetcomputer.org/">Internet Computer</a>, with fares settled in on-chain ckBTC.
+</p>
 
-To get started, you might want to explore the project directory structure and the default configuration file. Working with this project in your development environment will not affect any production deployment or identity tokens.
+<p align="center">
+  <img src="assets/kivuli-demo.gif" alt="Kivuli demo — request a ride in Nairobi, watch the driver, pay in ckBTC" width="820" />
+</p>
 
-To learn more before you start working with `kivuli`, see the following documentation available online:
+> **What this is:** a working *concept/prototype* exploring what ride-hailing looks like when the
+> whole thing — dispatch state, settlement, hosting — lives on-chain, and the payment rail is
+> Bitcoin (via ckBTC) instead of a card processor. It is **not** a live commercial service.
 
-- [Quick Start](https://internetcomputer.org/docs/current/developer-docs/setup/deploy-locally)
-- [SDK Developer Tools](https://internetcomputer.org/docs/current/developer-docs/setup/install)
+---
 
-If you want to start working on your project right away, you might want to try the following commands:
+## Why it's interesting
 
-```bash
-cd kivuli/
-dfx help
-dfx canister --help
+- **Fully on-chain, 100% TypeScript.** Both canisters are written in TypeScript with
+  [Azle](https://github.com/demergent-labs/azle) — no Motoko, no Rust. The React frontend is
+  served from an ICP asset canister, so *nothing runs on a server you have to babysit.*
+- **Real on-chain settlement.** Paying the fare triggers a genuine inter-canister
+  `icrc1_transfer` — the ride canister moves ckBTC to the driver's wallet on-chain and gets back
+  a ledger **block index**. No mock "payment successful" toast.
+- **Beautiful maps out of the box** via [mapcn](https://mapcn.dev) (MapLibre + Tailwind, shadcn-style).
+- **Live on-chain ride state.** The UI polls the canister and shows the ride's real status as it
+  advances: `requested → accepted → intrip → completed → paid`.
+
+## How it works
+
+```mermaid
+flowchart LR
+  Rider["Rider PWA<br/>React · mapcn · @dfinity/agent"]
+  Backend["kivuli_backend<br/>Azle canister · ride state"]
+  Ledger["kivuli_ledger<br/>Azle canister · ICRC-1 (ckTESTBTC)"]
+
+  Rider -->|"requestRide · payRide"| Backend
+  Rider -.->|"polls getRide"| Backend
+  Backend -->|"icrc1_transfer"| Ledger
 ```
 
-## Running the project locally
+1. Rider opens the PWA, picks a destination — fare is estimated (distance × rate) and quoted in KES + sats.
+2. `requestRide` writes the ride on-chain; a (simulated) driver accepts and animates to the pickup, then to the destination — positions and status transitions are pushed to the canister.
+3. On arrival, **Pay** calls `payRide`, which performs a real `icrc1_transfer` from the ride canister's escrow to the driver's account and returns the ledger block index.
 
-If you want to test your project locally, you can use the following commands:
+## Screenshots
+
+| Hail | En route | Paid in ckBTC |
+|---|---|---|
+| ![map](assets/01-map.png) | ![enroute](assets/02-enroute.png) | ![paid](assets/03-paid.png) |
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Backend canisters | **Azle 0.33** (TypeScript CDK for ICP) |
+| Token / settlement | ICRC-1 ledger canister → **ckBTC**-style transfer |
+| Frontend | **React + Vite + TypeScript**, Tailwind v4 |
+| Maps | **[mapcn](https://mapcn.dev)** (MapLibre GL) |
+| Chain | **Internet Computer** (`dfx`) |
+
+## Run it locally
 
 ```bash
-# Starts the replica, running in the background
-dfx start --background
+# 1. Start a local replica
+dfx start --clean --background
 
-# Deploys your canisters to the replica and generates your candid interface
+# 2. Deploy the canisters
 dfx deploy
+
+# 3. Seed the ledger + wire the backend (one-time, after deploy)
+BACKEND=$(dfx canister id kivuli_backend)
+LEDGER=$(dfx canister id kivuli_ledger)
+DRIVER=$(dfx identity get-principal)
+dfx canister call kivuli_ledger faucet "(principal \"$BACKEND\", 100000000)"
+dfx canister call kivuli_backend config "(\"$LEDGER\", \"$DRIVER\")"
+
+# 4. Run the frontend
+cd src/kivuli_frontend && npm install && npm run dev
+# → http://localhost:3000
 ```
 
-Once the job completes, your application will be available at `http://localhost:4943?canisterId={asset_canister_id}`.
+## Honest notes
 
-If you have made changes to your backend canister, you can generate a new candid interface with
+- The **driver is simulated** — this demonstrates the full ride lifecycle without a second device.
+- `kivuli_ledger` is a **minimal ICRC-1 ledger** standing in for the real mainnet **ckTESTBTC**
+  ledger. The transfer is a genuine on-chain token movement; pointing at the real ckTESTBTC ledger
+  is a mainnet-deploy step.
+- No KYC / licensing / real-money handling — it's a prototype, framed as one.
 
-```bash
-npm run generate
-```
+## Roadmap
 
-at any time. This is recommended before starting the frontend development server, and will be run automatically any time you run `dfx deploy`.
+- [ ] Deploy to ICP mainnet + wire the real **ckTESTBTC** ledger
+- [ ] A real driver app (second device) replacing the simulation
+- [ ] Driver wallet / earnings history
+- [ ] DAO governance of fares & routes
 
-If you are making frontend changes, you can start a development server with
+## Credits
 
-```bash
-npm start
-```
+Built with [Azle](https://github.com/demergent-labs/azle), [mapcn](https://mapcn.dev),
+[MapLibre](https://maplibre.org/), and the [Internet Computer](https://internetcomputer.org/).
+Basemaps © [CARTO](https://carto.com/) / © OpenStreetMap contributors.
 
-Which will start a server at `http://localhost:8080`, proxying API requests to the replica at port 4943.
+## License
 
-### Note on frontend environment variables
-
-If you are hosting frontend code somewhere without using DFX, you may need to make one of the following adjustments to ensure your project does not fetch the root key in production:
-
-- set`DFX_NETWORK` to `ic` if you are using Webpack
-- use your own preferred method to replace `process.env.DFX_NETWORK` in the autogenerated declarations
-  - Setting `canisters -> {asset_canister_id} -> declarations -> env_override to a string` in `dfx.json` will replace `process.env.DFX_NETWORK` with the string in the autogenerated declarations
-- Write your own `createActor` constructor
+MIT
