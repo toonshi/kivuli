@@ -10,6 +10,7 @@ import {
 import { brand } from "@/lib/brand";
 import { estimateFare, type Coord, type Fare } from "@/lib/fare";
 import * as canister from "@/lib/canister";
+import { fetchRoute, pointAlong, type LngLat } from "@/lib/route";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "requesting" | "enroute" | "intrip" | "completed";
@@ -23,7 +24,6 @@ const DESTINATIONS: Destination[] = [
 ];
 
 const GILT = "#c6a353";
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export default function App() {
   const [pickup] = useState<Coord>(brand.defaultCenter);
@@ -37,6 +37,7 @@ export default function App() {
   const [paid, setPaid] = useState(false);
   const [paying, setPaying] = useState(false);
   const [payBlock, setPayBlock] = useState<bigint | null>(null);
+  const [tripRoute, setTripRoute] = useState<LngLat[] | null>(null);
 
   const rafRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
@@ -45,6 +46,13 @@ export default function App() {
     () => (dropoff ? estimateFare(pickup, dropoff) : null),
     [pickup, dropoff],
   );
+
+  const tripCoords: LngLat[] | null = dropoff
+    ? (tripRoute ?? [
+        [pickup.lng, pickup.lat],
+        [dropoff.lng, dropoff.lat],
+      ])
+    : null;
 
   useEffect(() => {
     if (!rideId || phase === "idle") return;
@@ -64,17 +72,14 @@ export default function App() {
     };
   }, [rideId, phase]);
 
-  const animateSegment = useCallback(
-    (from: Coord, to: Coord, ms: number, onTick: (c: Coord) => void) =>
+  const animatePath = useCallback(
+    (path: LngLat[], ms: number, onTick: (c: Coord) => void) =>
       new Promise<void>((resolve) => {
         const start = performance.now();
         const step = (now: number) => {
           if (cancelledRef.current) return resolve();
           const t = Math.min(1, (now - start) / ms);
-          onTick({
-            lat: lerp(from.lat, to.lat, t),
-            lng: lerp(from.lng, to.lng, t),
-          });
+          onTick(pointAlong(path, t));
           if (t < 1) rafRef.current = requestAnimationFrame(step);
           else resolve();
         };
@@ -83,10 +88,13 @@ export default function App() {
     [],
   );
 
-  const selectDestination = (d: Destination) => {
+  const selectDestination = async (d: Destination) => {
     if (phase !== "idle") return;
     setDestName(d.name);
     setDropoff(d.coord);
+    setTripRoute(null);
+    const route = await fetchRoute(pickup, d.coord);
+    setTripRoute(route);
   };
 
   const handleRequest = async () => {
@@ -106,13 +114,17 @@ export default function App() {
         driverStart.lat,
         driverStart.lng,
       );
-      setDriver(driverStart);
+
+      // Road-follow the driver: approach route to the rider, then the trip route.
+      const approach = await fetchRoute(driverStart, pickup);
+      const trip = tripRoute ?? (await fetchRoute(pickup, dropoff));
+      setDriver({ lng: approach[0][0], lat: approach[0][1] });
       setPhase("enroute");
-      await animateSegment(driverStart, pickup, 6500, setDriver);
+      await animatePath(approach, 6500, setDriver);
       if (cancelledRef.current) return;
       await canister.updateDriver(id, pickup.lat, pickup.lng, "intrip");
       setPhase("intrip");
-      await animateSegment(pickup, dropoff, 9000, setDriver);
+      await animatePath(trip, 9000, setDriver);
       if (cancelledRef.current) return;
       await canister.completeRide(id);
       setDriver(dropoff);
@@ -150,6 +162,7 @@ export default function App() {
     setPaid(false);
     setPaying(false);
     setPayBlock(null);
+    setTripRoute(null);
   };
 
   return (
@@ -160,24 +173,18 @@ export default function App() {
         zoom={brand.mapZoom}
         className="absolute inset-0 [filter:brightness(0.9)_contrast(1.06)_saturate(0.68)]"
       >
-        {dropoff && (
+        {tripCoords && (
           <>
             <MapRoute
               id="trip-glow"
-              coordinates={[
-                [pickup.lng, pickup.lat],
-                [dropoff.lng, dropoff.lat],
-              ]}
+              coordinates={tripCoords}
               color={GILT}
               width={10}
               opacity={0.12}
             />
             <MapRoute
               id="trip-line"
-              coordinates={[
-                [pickup.lng, pickup.lat],
-                [dropoff.lng, dropoff.lat],
-              ]}
+              coordinates={tripCoords}
               color={GILT}
               width={1.5}
               opacity={0.9}
